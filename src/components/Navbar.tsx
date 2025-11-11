@@ -96,7 +96,7 @@ export function Navbar() {
                   <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
                     <User className="w-4 h-4 text-primary" />
                   </div>
-                  <span className="hidden sm:inline">{session.user?.email?.split('@')[0]}</span>
+                  <span className="hidden sm:inline">{session.user?.name || session.user?.email?.split('@')[0] || 'User'}</span>
                 </Button>
 
                 {/* User Dropdown Menu */}
