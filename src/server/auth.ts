@@ -99,14 +99,21 @@ if (env.TELEGRAM_BOT_TOKEN) {
 export const authOptions: NextAuthOptions = {
   providers,
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger, session }) {
       // On sign in, add user data to token
       if (user) {
         token.id = user.id;
         token.email = user.email;
         token.role = (user as any).role || 'USER';
         token.telegramId = (user as any).telegramId;
+        token.name = user.name ?? token.name;
       }
+
+      // Handle client-side session updates (e.g. profile name change)
+      if (trigger === 'update' && session?.name) {
+        token.name = session.name;
+      }
+
       return token;
     },
     async session({ session, token }) {
@@ -116,6 +123,7 @@ export const authOptions: NextAuthOptions = {
         session.user.email = token.email as string;
         session.user.role = token.role as any;
         session.user.telegramId = token.telegramId as string;
+        session.user.name = (token.name as string) ?? session.user.name;
       }
       return session;
     },

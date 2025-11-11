@@ -5,74 +5,104 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+type NumericInput =
+  | number
+  | string
+  | bigint
+  | null
+  | undefined
+  | {
+      toNumber?: () => number
+      toString?: () => string
+    }
+
+function normalizeNumber(value: NumericInput): number | null {
+  if (value === null || value === undefined) return null
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null
+  if (typeof value === 'bigint') return Number(value)
+  if (typeof value === 'string') {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : null
+  }
+  if (typeof value === 'object') {
+    if ('toNumber' in value && typeof value.toNumber === 'function') {
+      const parsed = Number(value.toNumber())
+      return Number.isFinite(parsed) ? parsed : null
+    }
+    if ('toString' in value && typeof value.toString === 'function') {
+      const parsed = Number(value.toString())
+      return Number.isFinite(parsed) ? parsed : null
+    }
+  }
+  return null
+}
+
 /**
  * Format number with commas
  */
-export function formatNumber(num: number, decimals = 2): string {
-  return num.toLocaleString('en-US', {
+export function formatNumber(num?: NumericInput, decimals = 2): string {
+  const value = normalizeNumber(num) ?? 0
+  return value.toLocaleString('en-US', {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
-  });
+  })
 }
 
 /**
  * Format price with appropriate decimals
  */
-export function formatPrice(price?: number | null): string {
-  const value = Number(price ?? 0);
-  
-  if (!Number.isFinite(value) || value === 0) {
-    return '0.00';
+export function formatPrice(price?: NumericInput): string {
+  const value = normalizeNumber(price)
+
+  if (value === null || value === 0) {
+    return '0.00'
   }
-  
+
   if (value < 1) {
     return value.toLocaleString('en-US', {
       minimumFractionDigits: 4,
       maximumFractionDigits: 6,
-    });
+    })
   } else if (value < 100) {
     return value.toLocaleString('en-US', {
       minimumFractionDigits: 2,
       maximumFractionDigits: 4,
-    });
+    })
   } else {
     return value.toLocaleString('en-US', {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
-    });
+    })
   }
 }
 
 /**
  * Format percentage
  */
-export function formatPercent(percent?: number | null, decimals = 2): string {
-  const value = Number(percent ?? 0);
-  if (!Number.isFinite(value)) {
-    return '0.00%';
-  }
-  const sign = value >= 0 ? '+' : '';
-  return `${sign}${value.toFixed(decimals)}%`;
+export function formatPercent(percent?: NumericInput, decimals = 2): string {
+  const value = normalizeNumber(percent) ?? 0
+  const sign = value >= 0 ? '+' : ''
+  return `${sign}${value.toFixed(decimals)}%`
 }
 
 /**
  * Format large numbers (1M, 1B, etc.)
  */
-export function formatLargeNumber(num?: number | null): string {
-  const value = Number(num ?? 0);
-  
-  if (!Number.isFinite(value)) {
-    return '0.00';
+export function formatLargeNumber(num?: NumericInput): string {
+  const value = normalizeNumber(num)
+
+  if (value === null) {
+    return '0.00'
   }
-  
+
   if (value >= 1_000_000_000) {
-    return `${(value / 1_000_000_000).toFixed(2)}B`;
+    return `${(value / 1_000_000_000).toFixed(2)}B`
   } else if (value >= 1_000_000) {
-    return `${(value / 1_000_000).toFixed(2)}M`;
+    return `${(value / 1_000_000).toFixed(2)}M`
   } else if (value >= 1_000) {
-    return `${(value / 1_000).toFixed(2)}K`;
+    return `${(value / 1_000).toFixed(2)}K`
   }
-  return value.toFixed(2);
+  return value.toFixed(2)
 }
 
 /**
