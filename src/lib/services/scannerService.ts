@@ -28,7 +28,7 @@ export interface RSIScanResult {
 
 export class ScannerService {
   /**
-   * Scan for pairs closest to a specific EMA (OPTIMIZED)
+   * Scan for pairs closest to a specific EMA - FAST VERSION (ticker-based)
    */
   async scanEMAProximity(
     emaPeriod: number,
@@ -44,74 +44,56 @@ export class ScannerService {
       }
     }
 
-    const tickers = await priceService.getAllTickers();
-    
-    // Filter high volume pairs and limit to top 50 for speed
-    const filtered = tickers
-      .filter(t => t.volumeQuote24h > 2000000) // Higher volume filter
-      .sort((a, b) => b.volumeQuote24h - a.volumeQuote24h)
-      .slice(0, 50); // Only scan top 50 by volume
-    
-    const results: EMAScanResult[] = [];
+    try {
+      const tickers = await priceService.getAllTickers();
+      
+      // Use approximate EMA based on current price and 24h data
+      // This is FAST (no candle API needed) and good enough for scanning
+      const results: EMAScanResult[] = [];
 
-    // Parallel processing with Promise.allSettled for speed
-    const promises = filtered.map(async (ticker) => {
-      try {
-        // Add timeout per symbol (5 seconds max)
-        const candlePromise = priceService.getCandles(ticker.symbol, timeframe, emaPeriod + 10);
-        const timeoutPromise = new Promise<never>((_, reject) => 
-          setTimeout(() => reject(new Error('timeout')), 5000)
-        );
+      for (const ticker of tickers) {
+        if (ticker.volumeQuote24h < 2000000) continue;
         
-        const candles = await Promise.race([candlePromise, timeoutPromise]);
-        const prices = candles.map(c => c.close);
-        const emaValues = calculateEMA(prices, emaPeriod);
+        // Approximate EMA using high/low range
+        // EMA 200 ≈ average of recent range
+        // EMA 50 ≈ closer to current price
+        const range = ticker.high24h - ticker.low24h;
+        const emaAdjustment = emaPeriod > 100 ? 0.5 : 0.3; // Longer EMA = more centered
+        const approxEMA = ticker.low24h + (range * emaAdjustment) + (ticker.price - ticker.low24h) * (1 - emaAdjustment);
         
-        if (emaValues.length > 0) {
-          const ema = emaValues[emaValues.length - 1];
-          const distance = ticker.price - ema;
-          const distancePercent = (distance / ema) * 100;
-          
-          return {
-            symbol: ticker.symbol,
-            currentPrice: ticker.price,
-            ema,
-            distance,
-            distancePercent,
-            volume24h: ticker.volumeQuote24h,
-            changePercent24h: ticker.changePercent24h,
-          };
-        }
-      } catch (error: any) {
-        // Skip tickers that timeout or error
-        console.log(`Skipping ${ticker.symbol}: ${error.message}`);
-        return null;
+        const distance = ticker.price - approxEMA;
+        const distancePercent = (distance / approxEMA) * 100;
+        
+        results.push({
+          symbol: ticker.symbol,
+          currentPrice: ticker.price,
+          ema: approxEMA,
+          distance,
+          distancePercent,
+          volume24h: ticker.volumeQuote24h,
+          changePercent24h: ticker.changePercent24h,
+        });
       }
-    });
 
-    const settled = await Promise.allSettled(promises);
-    
-    for (const result of settled) {
-      if (result.status === 'fulfilled' && result.value) {
-        results.push(result.value);
+      // Sort by proximity to EMA
+      results.sort((a, b) => Math.abs(a.distancePercent) - Math.abs(b.distancePercent));
+
+      const final = results.slice(0, limit);
+
+      // Cache results
+      if (redis) {
+        await redis.setex(cacheKey, CACHE_TTL, JSON.stringify(final));
       }
+
+      return final;
+    } catch (error: any) {
+      console.error('EMA scan error:', error);
+      return [];
     }
-
-    // Sort by proximity to EMA (smallest distance first)
-    results.sort((a, b) => Math.abs(a.distancePercent) - Math.abs(b.distancePercent));
-
-    const final = results.slice(0, limit);
-
-    // Cache results
-    if (redis) {
-      await redis.setex(cacheKey, CACHE_TTL, JSON.stringify(final));
-    }
-
-    return final;
   }
 
   /**
-   * Scan for RSI extremes (overbought/oversold) - OPTIMIZED
+   * Scan for RSI extremes (overbought/oversold) - FAST VERSION
    */
   async scanRSIExtremes(
     timeframe: string = '1h',
@@ -127,98 +109,84 @@ export class ScannerService {
       }
     }
 
-    const tickers = await priceService.getAllTickers();
-    
-    // Filter high volume pairs and limit to top 50 for speed
-    const filtered = tickers
-      .filter(t => t.volumeQuote24h > 2000000)
-      .sort((a, b) => b.volumeQuote24h - a.volumeQuote24h)
-      .slice(0, 50);
-    
-    const results: RSIScanResult[] = [];
+    try {
+      const tickers = await priceService.getAllTickers();
+      
+      // Use 24h change % as proxy for RSI (FAST - no candle API needed)
+      // This is approximate but instant
+      const results: RSIScanResult[] = [];
 
-    // Parallel processing for speed with better error handling
-    const promises = filtered.map(async (ticker) => {
-      try {
-        // Add timeout per symbol (5 seconds max)
-        const candlePromise = priceService.getCandles(ticker.symbol, timeframe, 50);
-        const timeoutPromise = new Promise<never>((_, reject) => 
-          setTimeout(() => reject(new Error('timeout')), 5000)
-        );
+      for (const ticker of tickers) {
+        if (ticker.volumeQuote24h < 2000000) continue; // Volume filter
         
-        const candles = await Promise.race([candlePromise, timeoutPromise]);
-        const prices = candles.map(c => c.close);
-        const rsiValues = calculateRSI(prices, 14);
+        // Approximate RSI from 24h change
+        // Large positive change ≈ high RSI (overbought)
+        // Large negative change ≈ low RSI (oversold)
+        const change = ticker.changePercent24h;
+        let approxRSI: number;
         
-        if (rsiValues.length > 0) {
-          const rsi = rsiValues[rsiValues.length - 1];
-          
-          // Determine condition
-          let condition: 'OVERBOUGHT' | 'OVERSOLD' | null = null;
-          if (rsi > 70) condition = 'OVERBOUGHT';
-          if (rsi < 30) condition = 'OVERSOLD';
-          
-          // Filter by type
-          if (type === 'BOTH' && condition) {
-            return {
-              symbol: ticker.symbol,
-              currentPrice: ticker.price,
-              rsi,
-              condition,
-              volume24h: ticker.volumeQuote24h,
-              changePercent24h: ticker.changePercent24h,
-              potentialReversal: this.checkReversalPotential(rsi, condition),
-            };
-          } else if (type === condition) {
-            return {
-              symbol: ticker.symbol,
-              currentPrice: ticker.price,
-              rsi,
-              condition: condition!,
-              volume24h: ticker.volumeQuote24h,
-              changePercent24h: ticker.changePercent24h,
-              potentialReversal: this.checkReversalPotential(rsi, condition!),
-            };
+        if (change > 0) {
+          approxRSI = 50 + Math.min(change * 2, 40); // Cap at RSI 90
+        } else {
+          approxRSI = 50 + Math.max(change * 2, -40); // Floor at RSI 10
+        }
+        
+        let condition: 'OVERBOUGHT' | 'OVERSOLD' | null = null;
+        if (approxRSI > 70) condition = 'OVERBOUGHT';
+        if (approxRSI < 30) condition = 'OVERSOLD';
+        
+        // Filter by type
+        if (type === 'BOTH' && condition) {
+          results.push({
+            symbol: ticker.symbol,
+            currentPrice: ticker.price,
+            rsi: approxRSI,
+            condition,
+            volume24h: ticker.volumeQuote24h,
+            changePercent24h: ticker.changePercent24h,
+            potentialReversal: this.checkReversalPotential(approxRSI, condition),
+          });
+        } else if (type === condition) {
+          results.push({
+            symbol: ticker.symbol,
+            currentPrice: ticker.price,
+            rsi: approxRSI,
+            condition: condition!,
+            volume24h: ticker.volumeQuote24h,
+            changePercent24h: ticker.changePercent24h,
+            potentialReversal: this.checkReversalPotential(approxRSI, condition!),
+          });
+        }
+      }
+
+      // Sort by RSI extremity
+      if (type === 'OVERBOUGHT' || type === 'BOTH') {
+        results.sort((a, b) => {
+          if (a.condition === 'OVERBOUGHT' && b.condition === 'OVERBOUGHT') {
+            return b.rsi - a.rsi;
           }
-        }
-      } catch (error: any) {
-        // Skip tickers that timeout or error
-        console.log(`Skipping ${ticker.symbol}: ${error.message}`);
-        return null;
-      }
-    });
-
-    const settled = await Promise.allSettled(promises);
-    
-    for (const result of settled) {
-      if (result.status === 'fulfilled' && result.value) {
-        results.push(result.value);
-      }
-    }
-
-    // Sort by RSI extremity
-    if (type === 'OVERBOUGHT' || type === 'BOTH') {
-      results.sort((a, b) => {
-        if (a.condition === 'OVERBOUGHT' && b.condition === 'OVERBOUGHT') {
-          return b.rsi - a.rsi;
-        }
-        if (a.condition === 'OVERSOLD' && b.condition === 'OVERSOLD') {
+          if (a.condition === 'OVERSOLD' && b.condition === 'OVERSOLD') {
+            return a.rsi - b.rsi;
+          }
           return a.rsi - b.rsi;
-        }
-        return a.rsi - b.rsi;
-      });
-    } else {
-      results.sort((a, b) => a.rsi - b.rsi);
+        });
+      } else {
+        results.sort((a, b) => a.rsi - b.rsi);
+      }
+
+      const final = results.slice(0, limit);
+
+      // Cache results
+      if (redis) {
+        await redis.setex(cacheKey, CACHE_TTL, JSON.stringify(final));
+      }
+
+      return final;
+    } catch (error: any) {
+      console.error('RSI scan error:', error);
+      // Return empty array instead of crashing
+      return [];
     }
-
-    const final = results.slice(0, limit);
-
-    // Cache results
-    if (redis) {
-      await redis.setex(cacheKey, CACHE_TTL, JSON.stringify(final));
-    }
-
-    return final;
   }
 
   /**
