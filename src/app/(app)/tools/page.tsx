@@ -51,14 +51,14 @@ export default function ToolsPage() {
     period: '200',
     timeframe: '1h',
   });
-  const [runEmaScan, setRunEmaScan] = useState(false);
+  const [emaQueryEnabled, setEmaQueryEnabled] = useState(false);
   const emaScanner = trpc.tools.scanEMA.useQuery(
     {
       emaPeriod: parseInt(emaConfig.period),
       timeframe: emaConfig.timeframe,
       limit: 10,
     },
-    { enabled: runEmaScan }
+    { enabled: emaQueryEnabled }
   );
 
   // RSI Scanner
@@ -66,15 +66,25 @@ export default function ToolsPage() {
     timeframe: '1h',
     type: 'BOTH' as 'OVERBOUGHT' | 'OVERSOLD' | 'BOTH',
   });
-  const [runRsiScan, setRunRsiScan] = useState(false);
+  const [rsiQueryEnabled, setRsiQueryEnabled] = useState(false);
   const rsiScanner = trpc.tools.scanRSI.useQuery(
     {
       timeframe: rsiConfig.timeframe,
       type: rsiConfig.type,
       limit: 10,
     },
-    { enabled: runRsiScan }
+    { enabled: rsiQueryEnabled }
   );
+
+  const handleEmaScan = () => {
+    setEmaQueryEnabled(false);
+    setTimeout(() => setEmaQueryEnabled(true), 100);
+  };
+
+  const handleRsiScan = () => {
+    setRsiQueryEnabled(false);
+    setTimeout(() => setRsiQueryEnabled(true), 100);
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -317,9 +327,18 @@ export default function ToolsPage() {
                   </div>
                 </div>
 
-                <Button onClick={() => setRunEmaScan(true)} className="w-full">
-                  <Search className="w-4 h-4 mr-2" />
-                  Scan Now
+                <Button onClick={handleEmaScan} className="w-full" disabled={emaScanner.isLoading}>
+                  {emaScanner.isLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Scanning...
+                    </>
+                  ) : (
+                    <>
+                      <Search className="w-4 h-4 mr-2" />
+                      Scan Now
+                    </>
+                  )}
                 </Button>
 
                 {emaScanner.isLoading && (
@@ -402,9 +421,18 @@ export default function ToolsPage() {
                   </div>
                 </div>
 
-                <Button onClick={() => setRunRsiScan(true)} className="w-full">
-                  <Zap className="w-4 h-4 mr-2" />
-                  Scan Now
+                <Button onClick={handleRsiScan} className="w-full" disabled={rsiScanner.isLoading}>
+                  {rsiScanner.isLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Scanning...
+                    </>
+                  ) : (
+                    <>
+                      <Zap className="w-4 h-4 mr-2" />
+                      Scan Now
+                    </>
+                  )}
                 </Button>
 
                 {rsiScanner.isLoading && (
