@@ -10,6 +10,12 @@ export const metadata: Metadata = {
   title: 'GhostFX - Crypto Command Center',
   description: 'Real-time crypto market intelligence, AI-powered analysis, and trading insights',
   keywords: ['crypto', 'trading', 'bitcoin', 'ethereum', 'market analysis', 'technical indicators'],
+  icons: {
+    icon: [
+      { url: '/favicon.ico' },
+      { url: '/icon.png', type: 'image/png', sizes: '32x32' },
+    ],
+  },
   openGraph: {
     title: 'GhostFX - Crypto Command Center',
     description: 'Real-time crypto market intelligence powered by AI',
