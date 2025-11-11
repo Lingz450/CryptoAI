@@ -126,8 +126,10 @@ function calculateTrendScore(prices: number[]): {
   const ema50 = calculateEMA(prices, 50);
   const ema200 = calculateEMA(prices, 200);
 
+  const sparkline = normalizeSparkline(prices.slice(-20));
+
   if (ema50.length === 0 || ema200.length === 0) {
-    return { score: 50, direction: 'NEUTRAL' };
+    return { score: 50, direction: 'NEUTRAL', sparkline };
   }
 
   const lastEma50 = ema50[ema50.length - 1];
@@ -150,8 +152,6 @@ function calculateTrendScore(prices: number[]): {
     score = 50 - Math.min(40, emaGap * 5) - Math.min(10, priceBelowEma50 * 2);
   }
 
-  const sparkline = normalizeSparkline(prices.slice(-20));
-
   return { score: Math.min(100, Math.max(0, score)), direction, sparkline };
 }
 
@@ -167,7 +167,7 @@ function calculateMomentumScore(prices: number[]): {
   const rsiValues = calculateRSI(prices, 14);
 
   if (rsiValues.length === 0) {
-    return { score: 50, rsi: 50, rsiCondition: 'NEUTRAL' };
+    return { score: 50, rsi: 50, rsiCondition: 'NEUTRAL', sparkline: [] };
   }
 
   const rsi = rsiValues[rsiValues.length - 1];
@@ -215,7 +215,7 @@ function calculateVolatilityScore(candles: Candle[], currentPrice: number): {
   const atrValues = calculateATR(candles, 14);
 
   if (atrValues.length === 0) {
-    return { score: 50, atr: 0, atrPercent: 0 };
+    return { score: 50, atr: 0, atrPercent: 0, sparkline: [] };
   }
 
   const atr = atrValues[atrValues.length - 1];
@@ -315,7 +315,7 @@ function calculateVolumeScore(candles: Candle[]): {
   sparkline: number[];
 } {
   if (candles.length < 20) {
-    return { score: 50, volumeRatio: 1 };
+    return { score: 50, volumeRatio: 1, sparkline: [] };
   }
 
   const recent = candles.slice(-5);

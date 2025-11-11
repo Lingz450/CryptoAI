@@ -258,7 +258,10 @@ export default function SetupsPage() {
         ) : (
           <div className="grid grid-cols-1 gap-4">
             {setups.map((setup: any) => {
-              const rr = calculateRiskReward(setup.entry, setup.stopLoss, setup.takeProfit);
+              const entry = Number(setup.entry) || 0;
+              const stopLoss = Number(setup.stopLoss) || 0;
+              const takeProfit = Number(setup.takeProfit1 || setup.takeProfit) || 0;
+              const rr = calculateRiskReward(entry, stopLoss, takeProfit);
               
               return (
                 <Card key={setup.id} className="hover:border-primary/50 transition-all">
@@ -296,15 +299,15 @@ export default function SetupsPage() {
                     <div className="grid grid-cols-3 gap-4 mb-4">
                       <div>
                         <div className="text-sm text-muted-foreground">Entry</div>
-                        <div className="text-lg font-semibold">{formatPrice(setup.entry)}</div>
+                        <div className="text-lg font-semibold">${formatPrice(entry)}</div>
                       </div>
                       <div>
                         <div className="text-sm text-muted-foreground">Stop Loss</div>
-                        <div className="text-lg font-semibold text-red-500">{formatPrice(setup.stopLoss)}</div>
+                        <div className="text-lg font-semibold text-red-500">${formatPrice(stopLoss)}</div>
                       </div>
                       <div>
                         <div className="text-sm text-muted-foreground">Take Profit</div>
-                        <div className="text-lg font-semibold text-green-500">{formatPrice(setup.takeProfit)}</div>
+                        <div className="text-lg font-semibold text-green-500">${formatPrice(takeProfit)}</div>
                       </div>
                     </div>
                     {setup.notes && (

@@ -57,7 +57,9 @@ export class CompoundAlertService {
     }
 
     // Parse compound rules
-    const rules = (alert.compoundRules as CompoundRule[]) || [];
+    const rules = Array.isArray(alert.compoundRules)
+      ? (alert.compoundRules as unknown as CompoundRule[])
+      : [];
     const ruleResults: Array<{ rule: CompoundRule; passed: boolean; currentValue: number }> = [];
 
     // Evaluate each rule

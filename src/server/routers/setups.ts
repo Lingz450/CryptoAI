@@ -30,9 +30,9 @@ export const setupsRouter = createTRPCRouter({
           direction: input.direction,
           entry: input.entry,
           stopLoss: input.stopLoss,
-          takeProfit: input.takeProfit,
-          notes: input.notes,
-          status: 'PENDING',
+          takeProfit1: input.takeProfit,
+          reasoning: input.notes,
+          status: 'ACTIVE',
         },
       });
       return setup;
@@ -58,7 +58,7 @@ export const setupsRouter = createTRPCRouter({
     .input(
       z.object({
         id: z.string(),
-        status: z.enum(['PENDING', 'ACTIVE', 'COMPLETED', 'CANCELLED']),
+        status: z.enum(['ACTIVE', 'EXECUTED', 'HIT_TP', 'HIT_SL', 'CANCELLED', 'CLOSED']),
       })
     )
     .mutation(async ({ ctx, input }) => {

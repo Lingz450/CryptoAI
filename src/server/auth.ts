@@ -88,6 +88,7 @@ if (env.TELEGRAM_BOT_TOKEN) {
           image: profile.photo_url,
           telegramId: profile.id.toString(),
           telegramUsername: profile.username,
+          role: 'USER' as const,
         };
       },
   });

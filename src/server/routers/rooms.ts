@@ -2,6 +2,14 @@ import { z } from 'zod';
 import { createTRPCRouter, protectedProcedure } from '../trpc';
 import { prisma } from '@/lib/prisma';
 
+type AuthedContext = {
+  session: {
+    user: {
+      id: string;
+    };
+  };
+};
+
 const roomInput = z.object({
   name: z.string().min(3).max(80),
   description: z.string().max(400).optional(),
@@ -30,7 +38,7 @@ const screenerInput = z.object({
   configuration: z.record(z.any()),
 });
 
-async function ensureRoomOwner(ctx: Parameters<typeof protectedProcedure['_def']['resolver']>[0]['ctx'], roomId: string) {
+async function ensureRoomOwner(ctx: AuthedContext, roomId: string) {
   const membership = await prisma.roomMembership.findFirst({
     where: {
       roomId,

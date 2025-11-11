@@ -14,6 +14,7 @@ import type { AppRouter } from '@/server/routers/_app';
 type RouterOutputs = inferRouterOutputs<AppRouter>;
 type RoomMembershipWithRelations = RouterOutputs['rooms']['list'][number];
 type RoomActivityEntry = RouterOutputs['rooms']['activity'][number];
+const resolveTimestamp = (value: Date | string) => new Date(value).getTime();
 
 export default function RoomsPage() {
   const { status } = useSession();
@@ -202,7 +203,9 @@ function RoomCard({ membership }: { membership: RoomMembershipWithRelations }) {
             {room.watchlistItems?.map((item) => (
               <div key={item.id} className="flex justify-between">
                 <span>{item.symbol}</span>
-                <span className="text-xs text-muted-foreground">{formatTimeAgo(item.createdAt)}</span>
+                <span className="text-xs text-muted-foreground">
+                  {formatTimeAgo(resolveTimestamp(item.createdAt))}
+                </span>
               </div>
             ))}
           </div>
@@ -248,7 +251,9 @@ function RoomCard({ membership }: { membership: RoomMembershipWithRelations }) {
                     {alert.symbol} {alert.condition === 'ABOVE' ? 'above' : 'below'} $
                     {Number.isFinite(numericTarget) ? numericTarget.toFixed(2) : '—'}
                   </span>
-                  <span className="text-xs text-muted-foreground">{formatTimeAgo(alert.createdAt)}</span>
+                <span className="text-xs text-muted-foreground">
+                  {formatTimeAgo(resolveTimestamp(alert.createdAt))}
+                </span>
                 </div>
               );
             })}
@@ -280,7 +285,9 @@ function RoomCard({ membership }: { membership: RoomMembershipWithRelations }) {
             {room.screeners?.map((screener) => (
               <div key={screener.id} className="flex justify-between">
                 <span>{screener.name}</span>
-                <span className="text-xs text-muted-foreground">{formatTimeAgo(screener.createdAt)}</span>
+                <span className="text-xs text-muted-foreground">
+                  {formatTimeAgo(resolveTimestamp(screener.createdAt))}
+                </span>
               </div>
             ))}
           </div>
@@ -295,7 +302,7 @@ function RoomCard({ membership }: { membership: RoomMembershipWithRelations }) {
               {activityEntries.map((entry) => (
                 <div key={entry.id} className="flex justify-between">
                   <span>{entry.message}</span>
-                  <span>{formatTimeAgo(entry.createdAt)}</span>
+                  <span>{formatTimeAgo(resolveTimestamp(entry.createdAt))}</span>
                 </div>
               ))}
             </div>

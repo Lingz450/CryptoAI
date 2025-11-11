@@ -119,9 +119,7 @@ export class PriceService {
       }
     }
 
-    const movers = exchange
-      ? await exchangeAggregator.getClient(exchange).getTopMovers(limit)
-      : await exchangeAggregator.getTopMoversAggregated(limit);
+    const movers = await exchangeAggregator.getTopMovers(limit, exchange);
 
     if (redis) {
       await redis.setex(cacheKey, 60, JSON.stringify(movers)); // Cache for 1 min

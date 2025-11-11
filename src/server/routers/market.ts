@@ -83,10 +83,13 @@ export const marketRouter = createTRPCRouter({
         input.symbols,
         input.exchange
       );
-      return Array.from(tickers.entries()).map(([symbol, ticker]) => ({
-        symbol,
-        ...ticker,
-      }));
+      return Array.from(tickers.entries()).map(([symbol, ticker]) => {
+        const { symbol: _ignored, ...rest } = ticker;
+        return {
+          symbol,
+          ...rest,
+        };
+      });
     }),
 
   // Get top movers
@@ -133,9 +136,9 @@ export const marketRouter = createTRPCRouter({
       return priceService.getOrderBook(
         input.symbol,
         input.limit,
-      input.exchange
-    );
-  }),
+        input.exchange
+      );
+    }),
 
   getDerivatives: publicProcedure
     .input(

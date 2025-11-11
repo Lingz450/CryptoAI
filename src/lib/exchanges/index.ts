@@ -179,6 +179,17 @@ export class ExchangeAggregator {
     return client.getPrice(symbol);
   }
 
+  /**
+   * Get top movers, optionally scoped to a single exchange
+   */
+  async getTopMovers(limit = 10, exchange?: ExchangeName): Promise<{ gainers: Ticker[]; losers: Ticker[] }> {
+    if (exchange) {
+      const client = this.getClient(exchange);
+      return client.getTopMovers(limit);
+    }
+    return this.getTopMoversAggregated(limit);
+  }
+
   async getDerivativesData(symbol: string, exchange?: ExchangeName) {
     const client = this.getClient(exchange || this.defaultExchange);
     if (typeof client.getDerivativesData !== 'function') {
