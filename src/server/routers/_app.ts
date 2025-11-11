@@ -10,6 +10,7 @@ import { realtimeRouter } from './realtime';
 import { roomsRouter } from './rooms';
 import { backtestRouter } from './backtest';
 import { userRouter } from './user';
+import { toolsRouter } from './tools';
 
 export const appRouter = createTRPCRouter({
   market: marketRouter,
@@ -22,6 +23,7 @@ export const appRouter = createTRPCRouter({
   rooms: roomsRouter,
   backtest: backtestRouter,
   user: userRouter,
+  tools: toolsRouter,
 });
 
 // Export type definition of API

@@ -15,7 +15,8 @@ import {
   LogOut,
   User,
   Menu,
-  X
+  X,
+  Calculator,
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -33,6 +34,7 @@ export function Navbar() {
     { name: 'Alerts', href: '/alerts', icon: Bell, protected: true },
     { name: 'Screeners', href: '/screeners', icon: Search, protected: true },
     { name: 'Setups', href: '/setups', icon: TrendingUp, protected: true },
+    { name: 'Tools', href: '/tools', icon: Calculator, protected: true },
   ];
 
   const isActive = (href: string) => {
