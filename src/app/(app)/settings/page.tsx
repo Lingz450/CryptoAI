@@ -1,16 +1,16 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useSession, signOut } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { trpc } from '@/lib/trpc/client';
 import { Settings, User, Bell, Key, LogOut, Loader2, Check } from 'lucide-react';
 
 export default function SettingsPage() {
-  const { data: session, status } = useSession();
+  const { data: session, status, update } = useSession();
   const router = useRouter();
-  const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
   const [formData, setFormData] = useState({
@@ -23,6 +23,25 @@ export default function SettingsPage() {
     setupUpdates: true,
     marketNews: false,
     weeklyReport: true,
+  });
+
+  // Update form when session loads
+  useEffect(() => {
+    if (session?.user) {
+      setFormData({
+        name: session.user.name || '',
+        email: session.user.email || '',
+      });
+    }
+  }, [session]);
+
+  const updateProfileMutation = trpc.user.updateProfile.useMutation({
+    onSuccess: async (data) => {
+      // Update the session with new name
+      await update({ name: data.name });
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+    },
   });
 
   if (status === 'loading') {
@@ -39,15 +58,10 @@ export default function SettingsPage() {
   }
 
   const handleSaveProfile = async () => {
-    setIsSaving(true);
     setSaveSuccess(false);
-    
-    // Simulate save
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    
-    setIsSaving(false);
-    setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 3000);
+    updateProfileMutation.mutate({
+      name: formData.name,
+    });
   };
 
   const handleSignOut = async () => {
@@ -107,12 +121,18 @@ export default function SettingsPage() {
                 </p>
               </div>
 
+              {updateProfileMutation.error && (
+                <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
+                  <p className="text-sm text-destructive">{updateProfileMutation.error.message}</p>
+                </div>
+              )}
+
               <div className="flex gap-2">
                 <Button
                   onClick={handleSaveProfile}
-                  disabled={isSaving}
+                  disabled={updateProfileMutation.isLoading || !formData.name}
                 >
-                  {isSaving ? (
+                  {updateProfileMutation.isLoading ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin mr-2" />
                       Saving...
