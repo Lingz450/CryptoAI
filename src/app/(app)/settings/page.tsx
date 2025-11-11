@@ -12,10 +12,11 @@ export default function SettingsPage() {
   const { data: session, status, update } = useSession();
   const router = useRouter();
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [isInitialized, setIsInitialized] = useState(false);
 
   const [formData, setFormData] = useState({
-    name: session?.user?.name || '',
-    email: session?.user?.email || '',
+    name: '',
+    email: '',
   });
 
   const [notifications, setNotifications] = useState({
@@ -25,15 +26,16 @@ export default function SettingsPage() {
     weeklyReport: true,
   });
 
-  // Update form when session loads
+  // Update form when session loads (only once)
   useEffect(() => {
-    if (session?.user) {
+    if (session?.user && !isInitialized) {
       setFormData({
         name: session.user.name || '',
         email: session.user.email || '',
       });
+      setIsInitialized(true);
     }
-  }, [session]);
+  }, [session, isInitialized]);
 
   const updateProfileMutation = trpc.user.updateProfile.useMutation({
     onSuccess: async (data) => {
