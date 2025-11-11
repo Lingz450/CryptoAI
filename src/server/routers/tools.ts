@@ -154,11 +154,23 @@ export const toolsRouter = createTRPCRouter({
       })
     )
     .query(async ({ input }) => {
-      return scannerService.scanEMAProximity(
-        input.emaPeriod,
-        input.timeframe,
-        input.limit
-      );
+      try {
+        // Add timeout to prevent infinite loading
+        const timeoutPromise = new Promise<never>((_, reject) => 
+          setTimeout(() => reject(new Error('Scan timeout - try again')), 30000)
+        );
+        
+        const scanPromise = scannerService.scanEMAProximity(
+          input.emaPeriod,
+          input.timeframe,
+          input.limit
+        );
+
+        return await Promise.race([scanPromise, timeoutPromise]);
+      } catch (error: any) {
+        console.error('EMA scan error:', error);
+        throw new Error(error.message || 'Scan failed - please try again');
+      }
     }),
 
   // RSI Scanner
@@ -171,11 +183,23 @@ export const toolsRouter = createTRPCRouter({
       })
     )
     .query(async ({ input }) => {
-      return scannerService.scanRSIExtremes(
-        input.timeframe,
-        input.type,
-        input.limit
-      );
+      try {
+        // Add timeout to prevent infinite loading
+        const timeoutPromise = new Promise<never>((_, reject) => 
+          setTimeout(() => reject(new Error('Scan timeout - try again')), 30000)
+        );
+        
+        const scanPromise = scannerService.scanRSIExtremes(
+          input.timeframe,
+          input.type,
+          input.limit
+        );
+
+        return await Promise.race([scanPromise, timeoutPromise]);
+      } catch (error: any) {
+        console.error('RSI scan error:', error);
+        throw new Error(error.message || 'Scan failed - please try again');
+      }
     }),
 
   // Psychological Levels Scanner

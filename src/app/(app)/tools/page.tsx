@@ -351,8 +351,33 @@ export default function ToolsPage() {
                 </Button>
 
                 {emaScanner.isLoading && (
-                  <div className="flex items-center justify-center py-8">
+                  <div className="flex flex-col items-center justify-center py-8 space-y-2">
                     <Loader2 className="w-6 h-6 animate-spin text-primary" />
+                    <p className="text-sm text-muted-foreground">Scanning top 50 coins...</p>
+                  </div>
+                )}
+
+                {emaScanner.error && (
+                  <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-lg">
+                    <p className="text-sm text-red-500">
+                      ⚠️ {emaScanner.error.message}
+                    </p>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="mt-2"
+                      onClick={() => setEmaQueryEnabled(false)}
+                    >
+                      Reset Scanner
+                    </Button>
+                  </div>
+                )}
+
+                {emaScanner.data && emaScanner.data.length === 0 && !emaScanner.isLoading && (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <TrendingUp className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                    <p>No coins found near EMA {emaConfig.period}.</p>
+                    <p className="text-sm mt-2">Try a different EMA period or timeframe.</p>
                   </div>
                 )}
 
@@ -445,8 +470,33 @@ export default function ToolsPage() {
                 </Button>
 
                 {rsiScanner.isLoading && (
-                  <div className="flex items-center justify-center py-8">
+                  <div className="flex flex-col items-center justify-center py-8 space-y-2">
                     <Loader2 className="w-6 h-6 animate-spin text-primary" />
+                    <p className="text-sm text-muted-foreground">Scanning top 50 coins...</p>
+                  </div>
+                )}
+
+                {rsiScanner.error && (
+                  <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-lg">
+                    <p className="text-sm text-red-500">
+                      ⚠️ {rsiScanner.error.message}
+                    </p>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="mt-2"
+                      onClick={() => setRsiQueryEnabled(false)}
+                    >
+                      Reset Scanner
+                    </Button>
+                  </div>
+                )}
+
+                {rsiScanner.data && rsiScanner.data.length === 0 && !rsiScanner.isLoading && (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Activity className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                    <p>No {rsiConfig.type.toLowerCase()} coins found at this time.</p>
+                    <p className="text-sm mt-2">Try scanning for "Both" or different timeframe.</p>
                   </div>
                 )}
 
