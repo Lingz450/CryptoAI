@@ -57,7 +57,13 @@ export class ScannerService {
     // Parallel processing with Promise.allSettled for speed
     const promises = filtered.map(async (ticker) => {
       try {
-        const candles = await priceService.getCandles(ticker.symbol, timeframe, emaPeriod + 10);
+        // Add timeout per symbol (5 seconds max)
+        const candlePromise = priceService.getCandles(ticker.symbol, timeframe, emaPeriod + 10);
+        const timeoutPromise = new Promise<never>((_, reject) => 
+          setTimeout(() => reject(new Error('timeout')), 5000)
+        );
+        
+        const candles = await Promise.race([candlePromise, timeoutPromise]);
         const prices = candles.map(c => c.close);
         const emaValues = calculateEMA(prices, emaPeriod);
         
@@ -76,7 +82,9 @@ export class ScannerService {
             changePercent24h: ticker.changePercent24h,
           };
         }
-      } catch (error) {
+      } catch (error: any) {
+        // Skip tickers that timeout or error
+        console.log(`Skipping ${ticker.symbol}: ${error.message}`);
         return null;
       }
     });
@@ -129,10 +137,16 @@ export class ScannerService {
     
     const results: RSIScanResult[] = [];
 
-    // Parallel processing for speed
+    // Parallel processing for speed with better error handling
     const promises = filtered.map(async (ticker) => {
       try {
-        const candles = await priceService.getCandles(ticker.symbol, timeframe, 50);
+        // Add timeout per symbol (5 seconds max)
+        const candlePromise = priceService.getCandles(ticker.symbol, timeframe, 50);
+        const timeoutPromise = new Promise<never>((_, reject) => 
+          setTimeout(() => reject(new Error('timeout')), 5000)
+        );
+        
+        const candles = await Promise.race([candlePromise, timeoutPromise]);
         const prices = candles.map(c => c.close);
         const rsiValues = calculateRSI(prices, 14);
         
@@ -167,7 +181,9 @@ export class ScannerService {
             };
           }
         }
-      } catch (error) {
+      } catch (error: any) {
+        // Skip tickers that timeout or error
+        console.log(`Skipping ${ticker.symbol}: ${error.message}`);
         return null;
       }
     });
