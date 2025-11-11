@@ -1,7 +1,10 @@
 // Advanced Scanner Service - EMA, RSI, and custom scans
 import { priceService } from './priceService';
 import { calculateEMA, calculateRSI } from '@/lib/indicators';
+import { redis } from '@/lib/redis';
 import type { Ticker } from '@/lib/exchanges/types';
+
+const CACHE_TTL = 300; // 5 minutes
 
 export interface EMAScanResult {
   symbol: string;
@@ -25,24 +28,36 @@ export interface RSIScanResult {
 
 export class ScannerService {
   /**
-   * Scan for pairs closest to a specific EMA
+   * Scan for pairs closest to a specific EMA (OPTIMIZED)
    */
   async scanEMAProximity(
     emaPeriod: number,
     timeframe: string = '1h',
     limit: number = 10
   ): Promise<EMAScanResult[]> {
+    // Check cache first
+    const cacheKey = `scan:ema:${emaPeriod}:${timeframe}:${limit}`;
+    if (redis) {
+      const cached = await redis.get(cacheKey);
+      if (cached) {
+        return JSON.parse(cached) as EMAScanResult[];
+      }
+    }
+
     const tickers = await priceService.getAllTickers();
     
-    // Filter high volume pairs
-    const filtered = tickers.filter(t => t.volumeQuote24h > 1000000);
+    // Filter high volume pairs and limit to top 50 for speed
+    const filtered = tickers
+      .filter(t => t.volumeQuote24h > 2000000) // Higher volume filter
+      .sort((a, b) => b.volumeQuote24h - a.volumeQuote24h)
+      .slice(0, 50); // Only scan top 50 by volume
     
     const results: EMAScanResult[] = [];
 
-    // Calculate EMA for each pair
-    for (const ticker of filtered.slice(0, 100)) { // Limit to top 100 by volume
+    // Parallel processing with Promise.allSettled for speed
+    const promises = filtered.map(async (ticker) => {
       try {
-        const candles = await priceService.getCandles(ticker.symbol, timeframe, emaPeriod + 50);
+        const candles = await priceService.getCandles(ticker.symbol, timeframe, emaPeriod + 10);
         const prices = candles.map(c => c.close);
         const emaValues = calculateEMA(prices, emaPeriod);
         
@@ -51,7 +66,7 @@ export class ScannerService {
           const distance = ticker.price - ema;
           const distancePercent = (distance / ema) * 100;
           
-          results.push({
+          return {
             symbol: ticker.symbol,
             currentPrice: ticker.price,
             ema,
@@ -59,37 +74,63 @@ export class ScannerService {
             distancePercent,
             volume24h: ticker.volumeQuote24h,
             changePercent24h: ticker.changePercent24h,
-          });
+          };
         }
       } catch (error) {
-        // Skip pairs with errors
-        continue;
+        return null;
+      }
+    });
+
+    const settled = await Promise.allSettled(promises);
+    
+    for (const result of settled) {
+      if (result.status === 'fulfilled' && result.value) {
+        results.push(result.value);
       }
     }
 
     // Sort by proximity to EMA (smallest distance first)
     results.sort((a, b) => Math.abs(a.distancePercent) - Math.abs(b.distancePercent));
 
-    return results.slice(0, limit);
+    const final = results.slice(0, limit);
+
+    // Cache results
+    if (redis) {
+      await redis.setex(cacheKey, CACHE_TTL, JSON.stringify(final));
+    }
+
+    return final;
   }
 
   /**
-   * Scan for RSI extremes (overbought/oversold)
+   * Scan for RSI extremes (overbought/oversold) - OPTIMIZED
    */
   async scanRSIExtremes(
     timeframe: string = '1h',
     type: 'OVERBOUGHT' | 'OVERSOLD' | 'BOTH' = 'BOTH',
     limit: number = 10
   ): Promise<RSIScanResult[]> {
+    // Check cache first
+    const cacheKey = `scan:rsi:${timeframe}:${type}:${limit}`;
+    if (redis) {
+      const cached = await redis.get(cacheKey);
+      if (cached) {
+        return JSON.parse(cached) as RSIScanResult[];
+      }
+    }
+
     const tickers = await priceService.getAllTickers();
     
-    // Filter high volume pairs
-    const filtered = tickers.filter(t => t.volumeQuote24h > 1000000);
+    // Filter high volume pairs and limit to top 50 for speed
+    const filtered = tickers
+      .filter(t => t.volumeQuote24h > 2000000)
+      .sort((a, b) => b.volumeQuote24h - a.volumeQuote24h)
+      .slice(0, 50);
     
     const results: RSIScanResult[] = [];
 
-    // Calculate RSI for each pair
-    for (const ticker of filtered.slice(0, 100)) {
+    // Parallel processing for speed
+    const promises = filtered.map(async (ticker) => {
       try {
         const candles = await priceService.getCandles(ticker.symbol, timeframe, 50);
         const prices = candles.map(c => c.close);
@@ -105,7 +146,7 @@ export class ScannerService {
           
           // Filter by type
           if (type === 'BOTH' && condition) {
-            results.push({
+            return {
               symbol: ticker.symbol,
               currentPrice: ticker.price,
               rsi,
@@ -113,9 +154,9 @@ export class ScannerService {
               volume24h: ticker.volumeQuote24h,
               changePercent24h: ticker.changePercent24h,
               potentialReversal: this.checkReversalPotential(rsi, condition),
-            });
+            };
           } else if (type === condition) {
-            results.push({
+            return {
               symbol: ticker.symbol,
               currentPrice: ticker.price,
               rsi,
@@ -123,11 +164,19 @@ export class ScannerService {
               volume24h: ticker.volumeQuote24h,
               changePercent24h: ticker.changePercent24h,
               potentialReversal: this.checkReversalPotential(rsi, condition!),
-            });
+            };
           }
         }
       } catch (error) {
-        continue;
+        return null;
+      }
+    });
+
+    const settled = await Promise.allSettled(promises);
+    
+    for (const result of settled) {
+      if (result.status === 'fulfilled' && result.value) {
+        results.push(result.value);
       }
     }
 
@@ -146,7 +195,14 @@ export class ScannerService {
       results.sort((a, b) => a.rsi - b.rsi);
     }
 
-    return results.slice(0, limit);
+    const final = results.slice(0, limit);
+
+    // Cache results
+    if (redis) {
+      await redis.setex(cacheKey, CACHE_TTL, JSON.stringify(final));
+    }
+
+    return final;
   }
 
   /**
