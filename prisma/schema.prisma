@@ -1,0 +1,574 @@
+// Prisma schema for GhostFX Crypto Command Center
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// AUTH & USERS
+// ============================================
+
+model User {
+  id            String    @id @default(cuid())
+  email         String?   @unique
+  emailVerified DateTime?
+  password      String?
+  name          String?
+  image         String?
+  telegramId    String?   @unique
+  telegramUsername String?
+  role          UserRole  @default(USER)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  accounts      Account[]
+  sessions      Session[]
+  alerts        Alert[]
+  watchlists    WatchlistItem[]
+  setups        Setup[]
+  backtests     Backtest[]
+  screeners     Screener[]
+  apiKeys       ApiKey[]
+  notificationPreferences NotificationPreference[]
+  roomMemberships RoomMembership[]
+  ownedRooms    Room[]
+  executedTrades ExecutedTrade[]
+  walletPositions WalletPosition[]
+  giveawayEntries GiveawayEntry[]
+  auditLogs     AuditLog[]
+  roomActivities RoomActivity[]
+
+  @@index([email])
+  @@index([telegramId])
+}
+
+enum UserRole {
+  USER
+  PRO
+  ADMIN
+  OWNER
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ============================================
+// ALERTS
+// ============================================
+
+model Alert {
+  id          String      @id @default(cuid())
+  userId      String
+  symbol      String      // BTC, ETH, SOL, etc.
+  targetPrice Decimal?    @db.Decimal(20, 8)
+  alertType   AlertType   @default(PRICE_CROSS)
+  condition   AlertCondition @default(ABOVE)
+  triggered   Boolean     @default(false)
+  triggeredAt DateTime?
+  enabled     Boolean     @default(true)
+  message     String?
+  metadata    Json?       // Additional context (RSI level, EMA cross details, etc.)
+  
+  // Compound alert fields
+  isCompound  Boolean     @default(false)
+  compoundRules Json?     // Array of rule objects for compound alerts
+  
+  // Cooldown and filters
+  cooldownMinutes Int?    // Cooldown period after triggering (in minutes)
+  lastCooldownEnd DateTime?
+  minMovePercent  Decimal? @db.Decimal(10, 4) // Minimum price move % to trigger
+  
+  // Regime awareness
+  requireRegime   String?  // TREND, MEAN_REVERT, CHOP (optional filter)
+  
+  // Reliability tracking
+  hitCount        Int      @default(0)
+  totalTriggers   Int      @default(0)
+  successRate     Decimal? @db.Decimal(5, 2)
+  avgPnl          Decimal? @db.Decimal(10, 2)
+  
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, symbol, enabled])
+  @@index([triggered, enabled])
+  @@index([userId, successRate])
+}
+
+enum AlertType {
+  PRICE_CROSS
+  RSI_LEVEL
+  EMA_CROSS
+  ATR_SPIKE
+  VOLUME_SURGE
+  COMPOUND
+  DERIVATIVES_SIGNAL
+}
+
+enum AlertCondition {
+  ABOVE
+  BELOW
+  CROSS_ABOVE
+  CROSS_BELOW
+  AND
+  OR
+}
+
+// ============================================
+// WATCHLISTS
+// ============================================
+
+model WatchlistItem {
+  id        String   @id @default(cuid())
+  userId    String
+  symbol    String
+  tags      String[] // ["major", "memecoin", etc.]
+  notes     String?
+  addedAt   DateTime @default(now())
+  position  Int      @default(0) // For custom ordering
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, symbol])
+  @@index([userId])
+}
+
+// ============================================
+// SETUPS & TRADE CALLS
+// ============================================
+
+model Setup {
+  id          String       @id @default(cuid())
+  userId      String
+  symbol      String
+  direction   TradeDirection
+  entry       Decimal      @db.Decimal(20, 8)
+  stopLoss    Decimal      @db.Decimal(20, 8)
+  takeProfit1 Decimal?     @db.Decimal(20, 8)
+  takeProfit2 Decimal?     @db.Decimal(20, 8)
+  takeProfit3 Decimal?     @db.Decimal(20, 8)
+  leverage    Int?
+  riskReward  Decimal?     @db.Decimal(10, 2)
+  confidence  Int?         // 1-100
+  reasoning   String?      @db.Text
+  imageUrl    String?
+  isPublic    Boolean      @default(false)
+  shareToken  String?      @unique
+  viewCount   Int          @default(0)
+  cloneCount  Int          @default(0)
+  status      SetupStatus  @default(ACTIVE)
+  executedAt  DateTime?
+  closedAt    DateTime?
+  pnl         Decimal?     @db.Decimal(20, 8)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  versions SetupVersion[]
+
+  @@index([userId, symbol])
+  @@index([isPublic, createdAt])
+  @@index([shareToken])
+}
+
+model SetupVersion {
+  id         String   @id @default(cuid())
+  setupId    String
+  version    Int
+  entry      Decimal  @db.Decimal(20, 8)
+  stopLoss   Decimal  @db.Decimal(20, 8)
+  takeProfit1 Decimal? @db.Decimal(20, 8)
+  takeProfit2 Decimal? @db.Decimal(20, 8)
+  takeProfit3 Decimal? @db.Decimal(20, 8)
+  notes      String?
+  createdAt  DateTime @default(now())
+
+  setup Setup @relation(fields: [setupId], references: [id], onDelete: Cascade)
+
+  @@index([setupId, version])
+}
+
+enum TradeDirection {
+  LONG
+  SHORT
+}
+
+enum SetupStatus {
+  ACTIVE
+  EXECUTED
+  HIT_TP
+  HIT_SL
+  CANCELLED
+  CLOSED
+}
+
+// ============================================
+// EXECUTED TRADES
+// ============================================
+
+model ExecutedTrade {
+  id          String         @id @default(cuid())
+  userId      String
+  symbol      String
+  direction   TradeDirection
+  entryPrice  Decimal        @db.Decimal(20, 8)
+  exitPrice   Decimal?       @db.Decimal(20, 8)
+  quantity    Decimal        @db.Decimal(20, 8)
+  leverage    Int?
+  pnl         Decimal?       @db.Decimal(20, 8)
+  pnlPercent  Decimal?       @db.Decimal(10, 4)
+  fees        Decimal?       @db.Decimal(20, 8)
+  exchange    String?
+  notes       String?        @db.Text
+  tags        String[]
+  enteredAt   DateTime       @default(now())
+  exitedAt    DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, enteredAt])
+  @@index([symbol])
+}
+
+// ============================================
+// WALLET & POSITIONS
+// ============================================
+
+model WalletPosition {
+  id         String   @id @default(cuid())
+  userId     String
+  exchange   String   // "binance", "bybit", "okx"
+  symbol     String
+  side       String   // "LONG", "SHORT"
+  quantity   Decimal  @db.Decimal(20, 8)
+  entryPrice Decimal  @db.Decimal(20, 8)
+  leverage   Int?
+  unrealizedPnl Decimal? @db.Decimal(20, 8)
+  lastUpdated DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, exchange, symbol, side])
+  @@index([userId])
+}
+
+// ============================================
+// BACKTESTING
+// ============================================
+
+model Backtest {
+  id          String   @id @default(cuid())
+  userId      String
+  name        String
+  symbol      String
+  timeframe   String   // "1h", "4h", "1d"
+  strategy    String   // "EMA_CROSS", "RSI_EXTREMES", etc.
+  params      Json     // Strategy parameters
+  startDate   DateTime
+  endDate     DateTime
+  results     Json?    // Win rate, profit factor, max DD, trades, etc.
+  equityCurve Json?    // Array of equity snapshots
+  status      BacktestStatus @default(PENDING)
+  createdAt   DateTime @default(now())
+  completedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
+
+enum BacktestStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+// ============================================
+// SCREENERS
+// ============================================
+
+model Screener {
+  id          String   @id @default(cuid())
+  userId      String
+  name        String
+  type        ScreenerType
+  filters     Json     // Complex filter object
+  schedule    String?  // Cron expression
+  enabled     Boolean  @default(true)
+  lastRun     DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  runs ScreenerRun[]
+
+  @@index([userId])
+  @@map("screeners")
+}
+
+model ScreenerRun {
+  id         String   @id @default(cuid())
+  screenerId String
+  results    Json     // Array of matching coins
+  resultCount Int     @default(0)
+  executedAt DateTime @default(now())
+
+  screener Screener @relation(fields: [screenerId], references: [id], onDelete: Cascade)
+
+  @@index([screenerId, executedAt])
+}
+
+enum ScreenerType {
+  ATR_BREAKOUT
+  EMA_CROSS
+  RSI_EXTREME
+  VOLUME_SURGE
+  CUSTOM
+}
+
+// ============================================
+// ROOMS (Team Workspaces)
+// ============================================
+
+model Room {
+  id          String   @id @default(cuid())
+  name        String
+  description String?  @db.Text
+  ownerId     String
+  isPublic    Boolean  @default(false)
+  inviteCode  String?  @unique
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  owner       User             @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  members     RoomMembership[]
+  giveaways   Giveaway[]
+  watchlistItems RoomWatchlistItem[]
+  roomAlerts  RoomAlert[]
+  screeners   RoomScreener[]
+  activities  RoomActivity[]
+
+  @@index([ownerId])
+  @@index([inviteCode])
+}
+
+model RoomMembership {
+  id       String     @id @default(cuid())
+  roomId   String
+  userId   String
+  role     RoomRole   @default(MEMBER)
+  joinedAt DateTime   @default(now())
+
+  room Room @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, userId])
+  @@index([userId])
+}
+
+model RoomWatchlistItem {
+  id        String   @id @default(cuid())
+  roomId    String
+  symbol    String
+  notes     String?
+  addedBy   String
+  createdAt DateTime @default(now())
+
+  room Room @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@index([roomId])
+}
+
+model RoomAlert {
+  id        String   @id @default(cuid())
+  roomId    String
+  symbol    String
+  targetPrice Decimal @db.Decimal(20, 8)
+  condition AlertCondition
+  createdBy String
+  createdAt DateTime @default(now())
+
+  room Room @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@index([roomId])
+}
+
+model RoomScreener {
+  id            String   @id @default(cuid())
+  roomId        String
+  name          String
+  configuration Json
+  createdBy     String
+  createdAt     DateTime @default(now())
+
+  room Room @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@index([roomId])
+}
+
+model RoomActivity {
+  id        String   @id @default(cuid())
+  roomId    String
+  userId    String
+  message   String
+  createdAt DateTime @default(now())
+
+  room Room @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([roomId, createdAt])
+}
+
+enum RoomRole {
+  OWNER
+  ANALYST
+  MEMBER
+}
+
+// ============================================
+// GIVEAWAYS
+// ============================================
+
+model Giveaway {
+  id          String         @id @default(cuid())
+  roomId      String?
+  title       String
+  description String?        @db.Text
+  prize       String
+  winnerCount Int            @default(1)
+  startTime   DateTime
+  endTime     DateTime
+  status      GiveawayStatus @default(ACTIVE)
+  winners     String[]       // User IDs
+  createdAt   DateTime       @default(now())
+
+  room    Room?           @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  entries GiveawayEntry[]
+
+  @@index([roomId, status])
+}
+
+model GiveawayEntry {
+  id         String   @id @default(cuid())
+  giveawayId String
+  userId     String
+  enteredAt  DateTime @default(now())
+
+  giveaway Giveaway @relation(fields: [giveawayId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([giveawayId, userId])
+  @@index([giveawayId])
+}
+
+enum GiveawayStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+// ============================================
+// API KEYS & INTEGRATIONS
+// ============================================
+
+model ApiKey {
+  id          String   @id @default(cuid())
+  userId      String
+  name        String
+  keyHash     String   // Encrypted API key
+  permissions String[] // ["READ_BALANCE", "READ_POSITIONS", etc.]
+  lastUsed    DateTime?
+  expiresAt   DateTime?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// ============================================
+// NOTIFICATIONS
+// ============================================
+
+model NotificationPreference {
+  id           String   @id @default(cuid())
+  userId       String
+  alertsEmail  Boolean  @default(true)
+  alertsTelegram Boolean @default(true)
+  alertsPush   Boolean  @default(true)
+  digestEmail  Boolean  @default(true)
+  digestFrequency String @default("WEEKLY") // "DAILY", "WEEKLY"
+  screenerNotifications Boolean @default(true)
+  updatedAt    DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId])
+}
+
+// ============================================
+// AUDIT LOGS
+// ============================================
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  action    String   // "ALERT_CREATED", "SETUP_SHARED", etc.
+  resource  String?  // Resource type
+  resourceId String? // Resource ID
+  metadata  Json?
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([action, createdAt])
+}
+
