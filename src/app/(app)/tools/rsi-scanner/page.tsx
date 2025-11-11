@@ -43,50 +43,85 @@ export default function RSIScannerPage() {
     }
   }, [config.strictMode]);
 
-  const rsiScanner = trpc.tools.scanRSI.useQuery(
-    {
-      timeframe: config.timeframe,
-      type: config.type,
-      limit: 20,
-    },
-    { enabled: false }
-  );
-
   const handleScan = async () => {
     cancelRef.current = false;
     setIsScanning(true);
     setResults([]);
-    setProgress({ done: 0, total: 50, eta: 50 });
+    setProgress({ done: 0, total: 50, eta: null });
 
-    // Simulate streaming progress
-    const startTime = Date.now();
-    const interval = setInterval(() => {
-      if (cancelRef.current) {
-        clearInterval(interval);
-        setIsScanning(false);
-        return;
+    const abortController = new AbortController();
+    cancelRef.current = false;
+
+    try {
+      const res = await fetch('/api/scan/rsi', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          timeframe: config.timeframe,
+          type: config.type,
+        }),
+        signal: abortController.signal,
+      });
+
+      if (!res.ok || !res.body) {
+        throw new Error('Scan failed');
       }
 
-      setProgress(p => {
-        const newDone = Math.min(p.done + Math.random() * 5, p.total);
-        const elapsed = (Date.now() - startTime) / 1000;
-        const rate = newDone / elapsed;
-        const remaining = p.total - newDone;
-        const eta = rate > 0 ? Math.ceil(remaining / rate) : null;
-        
-        return { ...p, done: Math.floor(newDone), eta };
-      });
-    }, 200);
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+      const startTime = Date.now();
 
-    // Actual scan
-    try {
-      const data = await rsiScanner.refetch();
-      setResults(data.data || []);
-      setProgress({ done: 50, total: 50, eta: 0 });
-    } catch (error) {
+      while (true) {
+        if (cancelRef.current) {
+          abortController.abort();
+          break;
+        }
+
+        const { value, done } = await reader.read();
+        if (done) break;
+
+        buf += decoder.decode(value, { stream: true });
+        let i;
+
+        while ((i = buf.indexOf('\n')) >= 0) {
+          const line = buf.slice(0, i);
+          buf = buf.slice(i + 1);
+          if (!line.trim()) continue;
+
+          const evt = JSON.parse(line);
+
+          if (evt.type === 'progress') {
+            const elapsed = (Date.now() - startTime) / 1000;
+            const rate = evt.done / elapsed;
+            const remaining = evt.total - evt.done;
+            const eta = rate > 0 ? Math.ceil(remaining / rate) : null;
+            setProgress({ done: evt.done, total: evt.total, eta });
+          }
+
+          if (evt.type === 'row') {
+            setResults((r) => [...r, evt.payload]);
+          }
+
+          if (evt.type === 'error') {
+            console.warn('Symbol error:', evt.symbol, evt.message);
+          }
+
+          if (evt.type === 'fatal') {
+            console.error('Fatal error:', evt.message);
+          }
+
+          if (evt.type === 'done') {
+            setProgress({ done: evt.total, total: evt.total, eta: 0 });
+          }
+        }
+      }
+    } catch (error: any) {
       console.error('Scan error:', error);
+      if (error.name !== 'AbortError') {
+        alert('Scan failed: ' + error.message);
+      }
     } finally {
-      clearInterval(interval);
       setIsScanning(false);
     }
   };
