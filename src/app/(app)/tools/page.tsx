@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { trpc } from '@/lib/trpc/client';
@@ -19,7 +20,15 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 export default function ToolsPage() {
-  const [activeTab, setActiveTab] = useState('position-calc');
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'position-calc');
+
+  // Update URL when tab changes
+  const handleTabChange = (value: string) => {
+    setActiveTab(value);
+    router.push(`/tools?tab=${value}`, { scroll: false });
+  };
 
   // Position Size Calculator
   const [posCalc, setPosCalc] = useState({
@@ -100,7 +109,7 @@ export default function ToolsPage() {
           </p>
         </div>
 
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <Tabs value={activeTab} onValueChange={handleTabChange}>
           <TabsList className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-6">
             <TabsTrigger value="position-calc">
               <Calculator className="w-4 h-4 mr-2" />
